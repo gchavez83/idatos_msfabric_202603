@@ -1,0 +1,12 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "KQLDashboard",
+    "displayName": "pbi_dashboard_corredores",
+    "description": "pbi_dashboard_corredores"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "f5781fb2-e2e2-9614-4175-a6aba449bac7"
+  }
+}

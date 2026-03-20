@@ -1,0 +1,74 @@
+{
+  "schema_version": 69,
+  "tiles": [
+    {
+      "id": "4af6281c-1719-4062-877e-c4869e5796f3",
+      "title": "New Tile",
+      "visualType": "table",
+      "pageId": "a609de61-bc8a-4e58-b623-6f540701db06",
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 8,
+        "height": 6
+      },
+      "queryRef": {
+        "kind": "query",
+        "queryId": "84a2b389-00c3-4f7d-b465-2ca75a9ad01d"
+      },
+      "visualOptions": {
+        "selectedDataOnLoad": {
+          "all": true,
+          "limit": 10
+        }
+      }
+    }
+  ],
+  "baseQueries": [],
+  "parameters": [
+    {
+      "kind": "duration",
+      "id": "072db62c-ccd9-4ea0-b2ee-0eff44b6cb8c",
+      "displayName": "Time range",
+      "description": "",
+      "beginVariableName": "_startTime",
+      "endVariableName": "_endTime",
+      "defaultValue": {
+        "kind": "dynamic",
+        "count": 1,
+        "unit": "hours"
+      },
+      "showOnPages": {
+        "kind": "all"
+      }
+    }
+  ],
+  "dataSources": [
+    {
+      "kind": "kusto-trident",
+      "id": "d49d93d6-d302-47db-b05a-823a30bf27ca",
+      "name": "eh_guillermo",
+      "clusterUri": "",
+      "database": "eec19632-8dd7-8f45-46df-6354b89b2b4c",
+      "workspace": "00000000-0000-0000-0000-000000000000",
+      "scopeId": "kusto-trident"
+    }
+  ],
+  "pages": [
+    {
+      "name": "Page 1",
+      "id": "a609de61-bc8a-4e58-b623-6f540701db06"
+    }
+  ],
+  "queries": [
+    {
+      "dataSource": {
+        "kind": "inline",
+        "dataSourceId": "d49d93d6-d302-47db-b05a-823a30bf27ca"
+      },
+      "text": "tiempo_merida\r\n| extend dt                  = todatetime(dateTime)\r\n| extend fecha               = format_datetime(dt, \"yyyy-MM-dd\")\r\n| where fecha               == format_datetime(now() - 3h, \"yyyy-MM-dd\")\r\n// ── Deduplicar por timestamp ───────────────────────────────────\r\n| summarize arg_max(ingestion_time(), *) by dt\r\n// ── Temperatura ───────────────────────────────────────────────\r\n| extend temperatura         = todouble(parse_json(temperature).value)\r\n| extend sensacion_termica   = todouble(parse_json(apparentTemperature).value)\r\n| extend temp_bulbo_humedo   = todouble(parse_json(wetBulbTemperature).value)\r\n// ── Viento ────────────────────────────────────────────────────\r\n| extend viento_velocidad    = todouble(parse_json(wind).speed.value)\r\n| extend viento_direccion    = tostring(parse_json(wind).direction.description)\r\n| extend viento_grados       = toint(parse_json(wind).direction.degrees)\r\n| extend rafaga_velocidad    = todouble(parse_json(windGust).speed.value)\r\n// ── Humedad y punto de rocío ───────────────────────────────────\r\n| extend humedad_relativa    = toint(relativeHumidity)\r\n| extend punto_rocio         = todouble(parse_json(dewPoint).value)\r\n// ── Visibilidad y cielo ────────────────────────────────────────\r\n| extend visibilidad_km      = todouble(parse_json(visibility).value)\r\n| extend nubosidad_pct       = toint(cloudCover)\r\n| extend descripcion_cielo   = tostring(description)\r\n| extend es_de_dia           = tobool(daytime)\r\n// ── UV ────────────────────────────────────────────────────────\r\n| extend uv_index            = toint(uvIndex)\r\n| extend uv_descripcion      = tostring(uvIndexDescription)\r\n// ── Precipitación ─────────────────────────────────────────────\r\n| extend lluvia_ultima_hora  = todouble(parse_json(precipitationSummary).pastHour.value)\r\n| extend lluvia_6h           = todouble(parse_json(precipitationSummary).past6Hours.value)\r\n| extend hay_precipitacion   = tobool(hasPrecipitation)\r\n// ── Score corredor (0–100) ─────────────────────────────────────\r\n| extend score_temperatura = case(\r\n    temperatura >= 10 and temperatura <= 18, 30,\r\n    temperatura >  18 and temperatura <= 24, 20,\r\n    temperatura >  24 and temperatura <= 28, 10,\r\n    0)\r\n| extend score_viento = case(\r\n    viento_velocidad <= 15, 25,\r\n    viento_velocidad <= 25, 15,\r\n    viento_velocidad <= 35,  5,\r\n    0)\r\n| extend score_humedad = case(\r\n    humedad_relativa >= 40 and humedad_relativa <= 60, 20,\r\n    humedad_relativa >  60 and humedad_relativa <= 75, 12,\r\n    humedad_relativa >  75,                             5,\r\n    15)\r\n| extend score_lluvia = case(\r\n    hay_precipitacion == false, 15,\r\n    lluvia_ultima_hora <= 1,     8,\r\n    0)\r\n| extend score_uv = case(\r\n    uv_index <= 2, 10,\r\n    uv_index <= 5,  8,\r\n    uv_index <= 7,  4,\r\n    0)\r\n| extend score_total       = score_temperatura + score_viento + score_humedad + score_lluvia + score_uv\r\n| extend condicion_running = case(\r\n    score_total >= 80, \"🟢 Condiciones ideales\",\r\n    score_total >= 60, \"🟡 Condiciones aceptables\",\r\n    score_total >= 40, \"🟠 Condiciones difíciles\",\r\n                       \"🔴 No recomendado\")\r\n| project\r\n    fecha_hora           = dt,\r\n    es_de_dia,\r\n    descripcion_cielo,\r\n    temperatura,\r\n    sensacion_termica,\r\n    temp_bulbo_humedo,\r\n    viento_velocidad,\r\n    viento_direccion,\r\n    viento_grados,\r\n    rafaga_velocidad,\r\n    humedad_relativa,\r\n    punto_rocio,\r\n    visibilidad_km,\r\n    nubosidad_pct,\r\n    uv_index,\r\n    uv_descripcion,\r\n    hay_precipitacion,\r\n    lluvia_ultima_hora,\r\n    lluvia_6h,\r\n    score_temperatura,\r\n    score_viento,\r\n    score_humedad,\r\n    score_lluvia,\r\n    score_uv,\r\n    score_total,\r\n    condicion_running\r\n| order by fecha_hora asc",
+      "id": "84a2b389-00c3-4f7d-b465-2ca75a9ad01d",
+      "usedVariables": []
+    }
+  ]
+}
